@@ -1,0 +1,101 @@
+# SAE-Drive default experiment configuration
+
+experiment:
+  name: sae_drive_default
+  seed: 42
+  output_dir: runs/sae_drive_default
+  device: cuda
+  mixed_precision: true
+  log_to_wandb: true
+  wandb_project: sae-drive
+  wandb_entity: null
+  log_to_tensorboard: true
+
+data:
+  video_root: /data/driving_videos
+  flow_root: /data/driving_videos/flow
+  ego_root: /data/driving_videos/ego          # optional: directory with per-sequence ego CSVs
+  manifest: /data/driving_videos/manifest.json
+  split_train: train
+  split_val: val
+  fps: 10                                      # target sampling rate after stride
+  source_fps: 30
+  clip_length: 32                              # T
+  future_horizon: 8                            # dT
+  clip_stride: 16                              # 50% overlap
+  image_height: 224
+  image_width: 384
+  flow_downscale: 4                            # flow target is H/4, W/4
+  min_ego_speed_kmh: 5.0                       # drop near-static clips
+  augment:
+    horizontal_flip: true
+    color_jitter: true
+    speed_jitter: true
+    temporal_jitter_frames: 2
+    temporal_reverse_prob: 0.1
+
+model:
+  encoder:
+    type: hybrid                               # hybrid | resnet3d | timesformer
+    in_channels: 3
+    stem_channels: 64
+    feature_channels: 512
+    embed_dim: 1024                            # d
+    transformer_layers: 6
+    transformer_heads: 8
+    transformer_mlp_ratio: 4.0
+    dropout: 0.1
+  bottleneck:
+    type: topk_sae
+    latent_dim: 4096                           # M (overcomplete)
+    topk: 32                                   # k active neurons
+    normalize_decoder: true
+    dead_neuron_window: 1000
+    dead_neuron_threshold: 0.001
+  decoder:
+    flow_horizon: 8                            # ΔT predicted flow frames
+    flow_channels: 2
+    flow_hidden_dim: 256
+    ego_dim: 3                                 # (dx, dy, dtheta)
+    ego_hidden_dim: 256
+
+loss:
+  lambda_recon: 1.0
+  lambda_sparse_initial: 0.0
+  lambda_sparse_final: 0.04
+  lambda_sparse_warmup_steps: 5000
+  lambda_future_initial: 0.5
+  lambda_future_final: 1.0
+  lambda_future_warmup_steps: 10000
+  lambda_temporal: 0.1
+  lambda_dead: 0.01
+  lambda_ego: 0.5                              # μ1 inside future loss
+  lambda_flow: 1.0
+  sparsity_type: l1                            # l1 | tanh
+
+training:
+  epochs: 50
+  batch_size: 8
+  num_workers: 8
+  prefetch_factor: 2
+  pin_memory: true
+  optimizer: adamw
+  learning_rate: 3.0e-4
+  weight_decay: 0.01
+  betas: [0.9, 0.999]
+  grad_clip_norm: 1.0
+  lr_scheduler: cosine                         # cosine | constant
+  lr_warmup_steps: 1000
+  log_every_n_steps: 50
+  val_every_n_epochs: 1
+  save_every_n_epochs: 5
+  resume_from: null
+
+evaluation:
+  num_clips_for_umap: 50000
+  umap_n_neighbors: 15
+  umap_min_dist: 0.1
+  umap_metric: cosine
+  hdbscan_min_cluster_size: 100
+  hdbscan_min_samples: 10
+  topk_clips_per_neuron: 100
